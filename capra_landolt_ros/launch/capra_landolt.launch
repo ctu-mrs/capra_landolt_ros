@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<launch>
+
+  <arg name="UAV_NAME"   default="$(env UAV_NAME)" /> 
+  <!-- default is realsense -->
+  <arg name="camera_type"   default="rgbd" /> 
+
+    <group ns="$(arg UAV_NAME)">
+
+      <node pkg="nodelet" type="nodelet" name="standalone_nodelet"  args="manager" output="screen"/>
+
+      <node pkg="nodelet" type="nodelet" name="LandoltNodelet" args="load capra/LandoltNodelet standalone_nodelet" output="screen">
+          <param name="camera_reading" type="str" value="/$(arg UAV_NAME)/$(arg camera_type)/color/image_raw" />
+      </node>
+
+    </group>
+</launch>
+

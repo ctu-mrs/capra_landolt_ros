@@ -1,10 +1,13 @@
-cmake_minimum_required(VERSION 2.8.3)
+cmake_minimum_required(VERSION 3.1.2)
 project(capra_landolt_ros)
 
-add_compile_options(-std=c++11)
+# add_compile_options(-std=c++11)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Boost REQUIRED COMPONENTS thread)
 find_package(OpenCV REQUIRED)
+
 find_package(catkin REQUIRED COMPONENTS
   cv_bridge
   image_transport
@@ -36,8 +39,10 @@ include_directories(
 )
 
 add_library(${PROJECT_NAME} src/LandoltNodelet.cpp)
+
 target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} ${Boost_LIBRARIES} ${OpenCV_LIBRARIES})
-add_dependencies(${PROJECT_NAME} capra_landolt_msgs_gencpp)
+
+# add_dependencies(${PROJECT_NAME} capra_landolt_msgs_gencpp)
 
 if(catkin_EXPORTED_LIBRARIES)
   add_dependencies(${PROJECT_NAME} ${catkin_EXPORTED_LIBRARIES})

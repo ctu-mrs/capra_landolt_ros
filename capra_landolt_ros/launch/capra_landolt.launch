@@ -12,9 +12,9 @@
       <node pkg="nodelet" type="nodelet" name="LandoltNodelet" args="load capra/LandoltNodelet standalone_nodelet" output="screen">
           <!-- <param name="camera_reading" type="str" value="/$(arg UAV_NAME)/$(arg camera_type)/color/image_raw" /> -->
 
-          <param name="camera_basler" type="str" value="/$(arg UAV_NAME)/basler_down/image_raw" />
-          <param name="camera_realsense" type="str" value="/$(arg UAV_NAME)/rgbd/color/image_raw" />
-          <param name="camera_reading" type="str" value="/$(arg UAV_NAME)/oak/rgb/image_raw" />
+          <param name="camera_basler_reading" type="str" value="/$(arg UAV_NAME)/basler_down/image_raw" />
+          <param name="camera_rgbd_reading" type="str" value="/$(arg UAV_NAME)/rgbd/color/image_raw" />
+          <param name="camera_oakd_reading" type="str" value="/$(arg UAV_NAME)/oak/rgb/image_raw" />
 
           <param name="uav_name" value="$(arg UAV_NAME)" />
       </node>

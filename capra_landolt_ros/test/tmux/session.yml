@@ -5,7 +5,7 @@ socket_name: mrs
 attach: false
 tmux_options: -f /etc/ctu-mrs/tmux.conf
 # you can modify these
-pre_window: export UAV_NAME=uav46; export RUN_TYPE=simulation; export UAV_TYPE=f330; export ROSBAG_PATH=/home/prochazo/bag_files/uas_mapping_challenge/207_2024_01_05_20_20_09_forward_rotating_during_flight/_2024-01-05-20-23-21.bag #export ROSBAG_PATH=/home/michal/bag_files/uas_mapping/_2023-12-22-20-54-53-monster.bag #export ROSBAG_PATH=/media/michal/SSD_MRS_7/uas_mapping_challenge/test_lane_flights/172_2023_12_22_20_51_47_monster_drone_autonomous_vio_t265/_2023-12-22-20-54-53.bag  #134_2023_12_19_15_26_32_flight_hard_silent_blocks_flodlight_on_almost_no_drift/_2023-12-19-15-28-10.bag 
+pre_window: export UAV_NAME=uav46; export RUN_TYPE=simulation; export UAV_TYPE=f330; export ROSBAG_PATH=/home/prochazo/bag_files/uas_mapping_challenge/207_2024_01_05_20_20_09_forward_rotating_during_flight/_2024-01-05-20-23-21.bag # export ROSBAG_PATH=/home/prochazo/bag_files/uas_mapping_challenge/180_2024_01_03_18_01_08_there_and_back_higher/_2024-01-03-18-02-58.bag # #export ROSBAG_PATH=/media/michal/SSD_MRS_7/uas_mapping_challenge/test_lane_flights/172_2023_12_22_20_51_47_monster_drone_autonomous_vio_t265/_2023-12-22-20-54-53.bag  #134_2023_12_19_15_26_32_flight_hard_silent_blocks_flodlight_on_almost_no_drift/_2023-12-19-15-28-10.bag 
 startup_window: detector
 windows:
   - roscore:

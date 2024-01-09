@@ -23,7 +23,9 @@ windows:
       layout: tiled
       panes:
         - waitForRos; roslaunch capra_landolt_ros capra_landolt.launch 
-        - waitForRos; rostopic echo /$UAV_NAME/boundings
+        - waitForRos; rostopic echo /$UAV_NAME/oakd/boundings_out
+        - waitForRos; rostopic echo /$UAV_NAME/rgbd/boundings_out
+        - waitForRos; rostopic echo /$UAV_NAME/basler/boundings_out
   - rviz:
       layout: tiled
       panes:

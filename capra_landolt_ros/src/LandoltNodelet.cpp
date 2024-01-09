@@ -37,12 +37,15 @@ private:
 
   // Publisher
   boost::mutex               connect_mutex_;
-  image_transport::Publisher image_pub_;
-  ros::Publisher             landolt_pub_;
-  ros::Publisher             bounding_pub_;
+  image_transport::Publisher oakd_image_pub_;
+  image_transport::Publisher rgbd_image_pub_;
+  image_transport::Publisher basler_image_pub_;
 
-  void connectCb();
-  void imageCb(const sensor_msgs::ImageConstPtr& image_msg, const sensor_msgs::CameraInfoConstPtr& info_msg);
+  ros::Publisher             oakd_landolt_pub_;
+  ros::Publisher             oakd_bounding_pub_;
+
+  void connectOakdCb();
+  void imageOakdCb(const sensor_msgs::ImageConstPtr& image_msg, const sensor_msgs::CameraInfoConstPtr& info_msg);
   void findLandoltGaps(const cv::Mat& imageRaw, Gaps& gaps, int minEdge, float minRatioCircle, int minDepth);
 };
 
@@ -81,33 +84,42 @@ void LandoltNodelet::onInit() {
 
   ROS_INFO("%s", camera_reading_.c_str());
 
-  ros::SubscriberStatusCallback             connect_cb     = boost::bind(&LandoltNodelet::connectCb, this);
-  image_transport::SubscriberStatusCallback img_connect_cb = boost::bind(&LandoltNodelet::connectCb, this);
+  ros::SubscriberStatusCallback             oakd_connect_cb     = boost::bind(&LandoltNodelet::connectOakdCb, this);
+  image_transport::SubscriberStatusCallback oakd_img_connect_cb = boost::bind(&LandoltNodelet::connectOakdCb, this);
+
+  /* ros::SubscriberStatusCallback             rgbd_connect_cb     = boost::bind(&LandoltNodelet::connectRgbddCb, this); */
+  /* image_transport::SubscriberStatusCallback rgbd_img_connect_cb = boost::bind(&LandoltNodelet::connectRgbdCb, this); */
+
+  /* ros::SubscriberStatusCallback             basler_connect_cb     = boost::bind(&LandoltNodelet::connectBalserCb, this); */
+  /* image_transport::SubscriberStatusCallback basler_img_connect_cb = boost::bind(&LandoltNodelet::connectBaslerCb, this); */
   // Make sure we don't enter connectCb() between advertising and assigning to pub_rect_
+  //
   boost::lock_guard<boost::mutex> lock(connect_mutex_);
 
-  bounding_pub_ = nh.advertise<capra_landolt_msgs::BoundingCircles>("boundings", 1, connect_cb, connect_cb);
-  landolt_pub_  = nh.advertise<capra_landolt_msgs::Landolts>("landolts", 1, connect_cb, connect_cb);
-  image_pub_    = it_->advertise("image", 1, img_connect_cb, img_connect_cb);
+  oakd_bounding_pub_ = nh.advertise<capra_landolt_msgs::BoundingCircles>("oakd/boundings_out", 1, oakd_connect_cb,oakd_connect_cb);
+  oakd_landolt_pub_  = nh.advertise<capra_landolt_msgs::Landolts>("oakd/landolts_out", 1, oakd_connect_cb, oakd_connect_cb);
+  oakd_image_pub_    = it_->advertise("oakd/processed_image_out", 1, oakd_img_connect_cb, oakd_img_connect_cb);
+  /* rgbd_image_pub_    = it_->advertise("rgbd_image_out", 1, img_connect_cb, img_connect_cb); */
+  /* basler_image_pub_    = it_->advertise("basler_image_out", 1, img_connect_cb, img_connect_cb); */
 }
 //}
 
-/* connectCb() //{ */
-void LandoltNodelet::connectCb() {
+/* connectOakdCb() //{ */
+void LandoltNodelet::connectOakdCb() {
   boost::lock_guard<boost::mutex> lock(connect_mutex_);
-  if (landolt_pub_.getNumSubscribers() == 0 && image_pub_.getNumSubscribers() == 0 && bounding_pub_.getNumSubscribers() == 0) {
+  if (oakd_landolt_pub_.getNumSubscribers() == 0 && oakd_image_pub_.getNumSubscribers() == 0 && oakd_bounding_pub_.getNumSubscribers() == 0) {
     NODELET_INFO("Disconnect to Landolt Detector...");
     sub_camera_.shutdown();
   } else if (!sub_camera_) {
     NODELET_INFO("Connect to Landolt Detector...");
     image_transport::TransportHints hints("raw", ros::TransportHints(), getPrivateNodeHandle());
-    sub_camera_ = it_->subscribeCamera(camera_reading_, static_cast<uint32_t>(queue_size_), &LandoltNodelet::imageCb, this, hints);
+    sub_camera_ = it_->subscribeCamera(camera_reading_, static_cast<uint32_t>(queue_size_), &LandoltNodelet::imageOakdCb, this, hints);
   }
 }
 //}
 
-/* imageCb() //{ */
-void LandoltNodelet::imageCb(const sensor_msgs::ImageConstPtr& image_msg, const sensor_msgs::CameraInfoConstPtr& info_msg) {
+/* imageOakdCb() //{ */
+void LandoltNodelet::imageOakdCb(const sensor_msgs::ImageConstPtr& image_msg, const sensor_msgs::CameraInfoConstPtr& info_msg) {
   cv_bridge::CvImageConstPtr img_ptr;
   try {
     img_ptr = cv_bridge::toCvShare(image_msg, sensor_msgs::image_encodings::BGR8);
@@ -123,15 +135,15 @@ void LandoltNodelet::imageCb(const sensor_msgs::ImageConstPtr& image_msg, const 
   std_msgs::Header header;
   header.stamp = ros::Time::now();
 
-  if (landolt_pub_.getNumSubscribers() > 0) {
+  if (oakd_landolt_pub_.getNumSubscribers() > 0) {
     capra_landolt_msgs::Landolts landolts;
     landolts.angles = gaps.angles;
     landolts.header = header;
 
-    landolt_pub_.publish(landolts);
+    oakd_landolt_pub_.publish(landolts);
   }
 
-  if (bounding_pub_.getNumSubscribers() > 0) {
+  if (oakd_bounding_pub_.getNumSubscribers() > 0) {
     capra_landolt_msgs::BoundingCircles boundings;
     boundings.header = header;
     boundings.radius = gaps.radius;
@@ -145,16 +157,16 @@ void LandoltNodelet::imageCb(const sensor_msgs::ImageConstPtr& image_msg, const 
     }
 
     boundings.centers = centers;
-    bounding_pub_.publish(boundings);
+    oakd_bounding_pub_.publish(boundings);
   }
 
-  if (image_pub_.getNumSubscribers() > 0) {
+  if (oakd_image_pub_.getNumSubscribers() > 0) {
     cv_bridge::CvImage img_msg(header, sensor_msgs::image_encodings::BGR8, img_ptr->image);
     for (int i = 0; i < gaps.angles.size(); i++) {
       circle(img_msg.image, gaps.centers[i], static_cast<int>(gaps.radius[i]), cv::Scalar(0, 0, 1), 3);
     }
 
-    image_pub_.publish(img_msg.toImageMsg());
+    oakd_image_pub_.publish(img_msg.toImageMsg());
   }
 }
 //}

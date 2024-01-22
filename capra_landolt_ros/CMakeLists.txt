@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.1.2)
+cmake_minimum_required(VERSION 3.5.1)
 project(capra_landolt_ros)
 
 # add_compile_options(-std=c++11)
@@ -36,11 +36,12 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
   ${Boost_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
+  ${ZBAR_INCLUDE_DIRS}
 )
 
 add_library(${PROJECT_NAME} src/LandoltNodelet.cpp)
 
-target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} ${Boost_LIBRARIES} ${OpenCV_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} ${Boost_LIBRARIES} ${OpenCV_LIBRARIES} ${ZBAR_LIBRARIES} zbar)
 
 # add_dependencies(${PROJECT_NAME} capra_landolt_msgs_gencpp)
 

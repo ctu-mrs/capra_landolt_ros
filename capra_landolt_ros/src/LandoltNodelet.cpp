@@ -1,8 +1,12 @@
 #include "ros/ros.h"
+
 #include "image_transport/image_transport.h"
 #include "opencv2/highgui.hpp"
 #include "opencv2/imgproc.hpp"
+#include <opencv2/objdetect.hpp>
 #include "cv_bridge/cv_bridge.h"
+#include <zbar.h>
+
 #include "capra_landolt_msgs/Landolts.h"
 #include "capra_landolt_msgs/BoundingCircles.h"
 #include "nodelet/nodelet.h"
@@ -10,9 +14,12 @@
 #include <pluginlib/class_list_macros.h>
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/lock_guard.hpp>
-
+#include <vector>
+#include <visualization_msgs/Marker.h>
 /* for protecting variables from simultaneous by from multiple threads */
 #include <mrs_lib/mutex.h>
+
+using namespace zbar;
 
 namespace capra
 {
@@ -22,6 +29,13 @@ struct Gaps
   std::vector<float>       angles;
   std::vector<float>       radius;
   std::vector<cv::Point2f> centers;
+};
+
+struct DecodedObject
+{
+  std::string            type;
+  std::string            data;
+  std::vector<cv::Point> location;
 };
 
 class LandoltNodelet : public nodelet::Nodelet {
@@ -40,12 +54,16 @@ private:
   double rgbd_detection_counter;
   double basler_detection_counter;
 
-  int  oakd_thr_min;
+  int oakd_thr_min;
   int rgbd_thr_min;
   int basler_thr_min;
   int oakd_thr_max;
   int rgbd_thr_max;
   int basler_thr_max;
+
+  cv::QRCodeDetector qrDecoder = cv::QRCodeDetector();
+  cv::Mat            bbox, rectifiedImage;
+
 
   // mutexes
   bool       is_initialized_ = false;
@@ -88,7 +106,12 @@ private:
   void imageBaslerCb(const sensor_msgs::ImageConstPtr& image_msg, const sensor_msgs::CameraInfoConstPtr& info_msg);
 
   void findLandoltGaps(const cv::Mat& imageRaw, Gaps& gaps, int minEdge, float minRatioCircle, int minDepth, int minBinThr, int maxBinThr);
+
+  void decodeQR(const cv::Mat& im, std::vector<DecodedObject>& decodedObjects);
+
+  void display(const cv::Mat& im, std::vector<DecodedObject>& decodedObjects);
 };
+
 
 /* magnitudePoint() //{ */
 float magnitudePoint(const cv::Point2f& diff) {
@@ -160,14 +183,14 @@ void LandoltNodelet::onInit() {
   oakd_image_pub_       = it_oakd_->advertise("oakd/processed_image_out", 1, oakd_img_connect_cb, oakd_img_connect_cb);
   oakd_image_debug_pub_ = it_debug_oakd_.advertise("oakd/debug/processed_image_out", 1);
 
-  rgbd_bounding_pub_ = nh.advertise<capra_landolt_msgs::BoundingCircles>("rgbd/boundings_out", 1, rgbd_connect_cb, rgbd_connect_cb);
-  rgbd_landolt_pub_  = nh.advertise<capra_landolt_msgs::Landolts>("rgbd/landolts_out", 1, rgbd_connect_cb, rgbd_connect_cb);
-  rgbd_image_pub_    = it_rgbd_->advertise("rgbd/processed_image_out", 1, rgbd_img_connect_cb, rgbd_img_connect_cb);
+  rgbd_bounding_pub_    = nh.advertise<capra_landolt_msgs::BoundingCircles>("rgbd/boundings_out", 1, rgbd_connect_cb, rgbd_connect_cb);
+  rgbd_landolt_pub_     = nh.advertise<capra_landolt_msgs::Landolts>("rgbd/landolts_out", 1, rgbd_connect_cb, rgbd_connect_cb);
+  rgbd_image_pub_       = it_rgbd_->advertise("rgbd/processed_image_out", 1, rgbd_img_connect_cb, rgbd_img_connect_cb);
   rgbd_image_debug_pub_ = it_debug_rgbd_.advertise("rgbd/debug/processed_image_out", 1);
 
-  basler_bounding_pub_ = nh.advertise<capra_landolt_msgs::BoundingCircles>("basler/boundings_out", 1, basler_connect_cb, basler_connect_cb);
-  basler_landolt_pub_  = nh.advertise<capra_landolt_msgs::Landolts>("basler/landolts_out", 1, basler_connect_cb, basler_connect_cb);
-  basler_image_pub_    = it_basler_->advertise("basler/processed_image_out", 1, basler_img_connect_cb, basler_img_connect_cb);
+  basler_bounding_pub_    = nh.advertise<capra_landolt_msgs::BoundingCircles>("basler/boundings_out", 1, basler_connect_cb, basler_connect_cb);
+  basler_landolt_pub_     = nh.advertise<capra_landolt_msgs::Landolts>("basler/landolts_out", 1, basler_connect_cb, basler_connect_cb);
+  basler_image_pub_       = it_basler_->advertise("basler/processed_image_out", 1, basler_img_connect_cb, basler_img_connect_cb);
   basler_image_debug_pub_ = it_debug_basler_.advertise("basler/debug/processed_image_out", 1);
 
   // | --------------------- finish the init -------------------- |
@@ -254,6 +277,11 @@ void LandoltNodelet::imageOakdCb(const sensor_msgs::ImageConstPtr& image_msg, co
     return;
   }
 
+  // Find and decode QR codes
+  std::vector<DecodedObject> decodedObjects;
+  decodeQR(img_ptr->image, decodedObjects);
+
+  // Find gaps
   Gaps gaps;
   findLandoltGaps(img_ptr->image, gaps, 12, 0.8f, 10, oakd_thr_min, oakd_thr_max);
 
@@ -289,17 +317,38 @@ void LandoltNodelet::imageOakdCb(const sensor_msgs::ImageConstPtr& image_msg, co
   if (oakd_image_pub_.getNumSubscribers() > 0) {
     cv_bridge::CvImage img_msg(header, sensor_msgs::image_encodings::BGR8, img_ptr->image);
 
+    // Draw circle
     for (int i = 0; i < gaps.angles.size(); i++) {
       circle(img_msg.image, gaps.centers[i], static_cast<int>(gaps.radius[i]), cv::Scalar(0, 0, 1), 3);
     }
+
+    /* // Draw box around detected QR code //{ */
+    /* for (int i = 0; i < decodedObjects.size(); i++) { */
+    /*   std::vector<cv::Point> points = decodedObjects[i].location; */
+    /*   std::vector<cv::Point> hull; */
+
+    /*   // If the points do not form a quad, find convex hull */
+    /*   if (points.size() > 4) */
+    /*     convexHull(points, hull); */
+    /*   else */
+    /*     hull = points; */
+
+    /*   // Number of points in the convex hull */
+    /*   int n = hull.size(); */
+
+    /*   for (int j = 0; j < n; j++) { */
+    /*     line(img_msg.image, hull[j], hull[(j + 1) % n], cv::Scalar(255, 0, 0), 3); */
+    /*   } */
+    /* } */
+    /* //} */
 
     oakd_image_pub_.publish(img_msg.toImageMsg());
 
     ROS_INFO_THROTTLE(2, "[LandoltNodelet]: publishing oakd camera processed");
 
     cv::Mat thresholdMat;
-    cvtColor(img_ptr->image, thresholdMat, cv::COLOR_BGR2GRAY);          // convert to grayscale
-    blur(thresholdMat, thresholdMat, cv::Size(3, 3));                    // apply blur to grayscaled image
+    cvtColor(img_ptr->image, thresholdMat, cv::COLOR_BGR2GRAY);                            // convert to grayscale
+    blur(thresholdMat, thresholdMat, cv::Size(3, 3));                                      // apply blur to grayscaled image
     threshold(thresholdMat, thresholdMat, oakd_thr_min, oakd_thr_max, cv::THRESH_BINARY);  // apply binary thresholding
 
     cv_bridge::CvImage img_msg_debug(header, sensor_msgs::image_encodings::MONO8, thresholdMat);
@@ -325,6 +374,11 @@ void LandoltNodelet::imageRgbdCb(const sensor_msgs::ImageConstPtr& image_msg, co
     return;
   }
 
+  // Find and decode QR codes
+  std::vector<DecodedObject> decodedObjects;
+  decodeQR(img_ptr->image, decodedObjects);
+
+  // Find gaps
   Gaps gaps;
   findLandoltGaps(img_ptr->image, gaps, 12, 0.8f, 10, rgbd_thr_min, rgbd_thr_max);
 
@@ -363,14 +417,34 @@ void LandoltNodelet::imageRgbdCb(const sensor_msgs::ImageConstPtr& image_msg, co
       circle(img_msg.image, gaps.centers[i], static_cast<int>(gaps.radius[i]), cv::Scalar(0, 0, 1), 3);
     }
 
+    /* // Draw box around detected QR codes //{ */
+    /* for (int i = 0; i < decodedObjects.size(); i++) { */
+    /*   std::vector<cv::Point> points = decodedObjects[i].location; */
+    /*   std::vector<cv::Point> hull; */
+
+    /*   // If the points do not form a quad, find convex hull */
+    /*   if (points.size() > 4) */
+    /*     convexHull(points, hull); */
+    /*   else */
+    /*     hull = points; */
+
+    /*   // Number of points in the convex hull */
+    /*   int n = hull.size(); */
+
+    /*   for (int j = 0; j < n; j++) { */
+    /*     line(img_msg.image, hull[j], hull[(j + 1) % n], cv::Scalar(255, 0, 0), 3); */
+    /*   } */
+    /* } */
+    /* //} */
+
     rgbd_image_pub_.publish(img_msg.toImageMsg());
 
     ROS_INFO_THROTTLE(2, "[LandoltNodelet]: publishing rgbd camera processed");
 
     cv::Mat thresholdMat;
-    cvtColor(img_ptr->image, thresholdMat, cv::COLOR_BGR2GRAY);          // convert to grayscale
-    blur(thresholdMat, thresholdMat, cv::Size(3, 3));                    // apply blur to grayscaled image
-    threshold(thresholdMat, thresholdMat, rgbd_thr_min , rgbd_thr_max, cv::THRESH_BINARY);  // apply binary thresholding
+    cvtColor(img_ptr->image, thresholdMat, cv::COLOR_BGR2GRAY);                            // convert to grayscale
+    blur(thresholdMat, thresholdMat, cv::Size(3, 3));                                      // apply blur to grayscaled image
+    threshold(thresholdMat, thresholdMat, rgbd_thr_min, rgbd_thr_max, cv::THRESH_BINARY);  // apply binary thresholding
 
     cv_bridge::CvImage img_msg_debug(header, sensor_msgs::image_encodings::MONO8, thresholdMat);
     rgbd_image_debug_pub_.publish(img_msg_debug.toImageMsg());
@@ -395,6 +469,11 @@ void LandoltNodelet::imageBaslerCb(const sensor_msgs::ImageConstPtr& image_msg, 
     return;
   }
 
+  // Find and decode QR codes
+  std::vector<DecodedObject> decodedObjects;
+  decodeQR(img_ptr->image, decodedObjects);
+
+  // Find gaps
   Gaps gaps;
   findLandoltGaps(img_ptr->image, gaps, 12, 0.8f, 10, basler_thr_min, basler_thr_max);
 
@@ -433,13 +512,33 @@ void LandoltNodelet::imageBaslerCb(const sensor_msgs::ImageConstPtr& image_msg, 
       circle(img_msg.image, gaps.centers[i], static_cast<int>(gaps.radius[i]), cv::Scalar(0, 0, 1), 3);
     }
 
+    /* // Draw box around detected QR codes //{ */
+    /* for (int i = 0; i < decodedObjects.size(); i++) { */
+    /*   std::vector<cv::Point> points = decodedObjects[i].location; */
+    /*   std::vector<cv::Point> hull; */
+
+    /*   // If the points do not form a quad, find convex hull */
+    /*   if (points.size() > 4) */
+    /*     convexHull(points, hull); */
+    /*   else */
+    /*     hull = points; */
+
+    /*   // Number of points in the convex hull */
+    /*   int n = hull.size(); */
+
+    /*   for (int j = 0; j < n; j++) { */
+    /*     line(img_msg.image, hull[j], hull[(j + 1) % n], cv::Scalar(255, 0, 0), 3); */
+    /*   } */
+    /* } */
+    /* //} */
+
     basler_image_pub_.publish(img_msg.toImageMsg());
 
     ROS_INFO_THROTTLE(2, "[LandoltNodelet]: publishing basler camera processed");
 
     cv::Mat thresholdMat;
-    cvtColor(img_ptr->image, thresholdMat, cv::COLOR_BGR2GRAY);          // convert to grayscale
-    blur(thresholdMat, thresholdMat, cv::Size(3, 3));                    // apply blur to grayscaled image
+    cvtColor(img_ptr->image, thresholdMat, cv::COLOR_BGR2GRAY);                                // convert to grayscale
+    blur(thresholdMat, thresholdMat, cv::Size(3, 3));                                          // apply blur to grayscaled image
     threshold(thresholdMat, thresholdMat, basler_thr_min, basler_thr_max, cv::THRESH_BINARY);  // apply binary thresholding
 
     cv_bridge::CvImage img_msg_debug(header, sensor_msgs::image_encodings::MONO8, thresholdMat);
@@ -451,8 +550,8 @@ void LandoltNodelet::imageBaslerCb(const sensor_msgs::ImageConstPtr& image_msg, 
 /* findLandoltGaps() //{ */
 void LandoltNodelet::findLandoltGaps(const cv::Mat& imageRaw, Gaps& gaps, int minEdge, float minRatioCircle, int minDepth, int minBinThr, int maxBinThr) {
   cv::Mat thresholdMat;
-  cvtColor(imageRaw, thresholdMat, cv::COLOR_BGR2GRAY);                // convert to grayscale
-  blur(thresholdMat, thresholdMat, cv::Size(3, 3));                    // apply blur to grayscaled image
+  cvtColor(imageRaw, thresholdMat, cv::COLOR_BGR2GRAY);                            // convert to grayscale
+  blur(thresholdMat, thresholdMat, cv::Size(3, 3));                                // apply blur to grayscaled image
   threshold(thresholdMat, thresholdMat, minBinThr, maxBinThr, cv::THRESH_BINARY);  // apply binary thresholding
 
   std::vector<std::vector<cv::Point>> contours;  // list of contour points
@@ -515,6 +614,73 @@ void LandoltNodelet::findLandoltGaps(const cv::Mat& imageRaw, Gaps& gaps, int mi
       }
     }
   }
+}
+//}
+
+/* decodeQR() //{ */
+void LandoltNodelet::decodeQR(const cv::Mat& im, std::vector<DecodedObject>& decodedObjects) {
+
+  // Create zbar scanner
+  ImageScanner scanner;
+
+  // Configure scanner
+  scanner.set_config(ZBAR_QRCODE, ZBAR_CFG_ENABLE, 1);
+
+  // Convert image to grayscale
+  cv::Mat imGray;
+  cvtColor(im, imGray, CV_BGR2GRAY);
+
+  // Wrap image data in a zbar image
+  Image image(im.cols, im.rows, "Y800", (uchar*)imGray.data, im.cols * im.rows);
+
+  // Scan the image for barcodes and QRCodes
+  int n = scanner.scan(image);
+
+  // Print results
+  for (zbar::Image::SymbolIterator symbol = image.symbol_begin(); symbol != image.symbol_end(); ++symbol) {
+    DecodedObject obj;
+    obj.type = symbol->get_type_name();
+    obj.data = symbol->get_data();
+    // Print type and data
+    /* std::cout << "Type : " << obj.type << std::endl; */
+    std::cout << "Data : " << obj.data << std::endl << std::endl;
+    // Obtain location
+    for (int i = 0; i < symbol->get_location_size(); i++) {
+      obj.location.push_back(cv::Point(symbol->get_location_x(i), symbol->get_location_y(i)));
+    }
+    decodedObjects.push_back(obj);
+  }
+}
+//}
+
+// Display barcode and QR code location //{
+void LandoltNodelet::display(const cv::Mat& im, std::vector<DecodedObject>& decodedObjects) {
+  // Loop over all decoded objects
+  for (int i = 0; i < decodedObjects.size(); i++) {
+    std::vector<cv::Point> points = decodedObjects[i].location;
+    std::vector<cv::Point> hull;
+
+    // If the points do not form a quad, find convex hull
+    if (points.size() > 4)
+      convexHull(points, hull);
+    else
+      hull = points;
+
+    // Number of points in the convex hull
+    int n = hull.size();
+
+    for (int j = 0; j < n; j++) {
+      line(im, hull[j], hull[(j + 1) % n], cv::Scalar(255, 0, 0), 3);
+    }
+  }
+
+  std_msgs::Header header;
+  header.stamp    = ros::Time::now();
+  header.frame_id = "oakd_camera";
+
+  cv_bridge::CvImage img_msg(header, sensor_msgs::image_encodings::BGR8, im);
+  // Display results
+  oakd_image_pub_.publish(img_msg.toImageMsg());
 }
 //}
 

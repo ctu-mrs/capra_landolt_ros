@@ -1,13 +1,11 @@
 oakd:
-  bin_threshold_min: 144
+  bin_threshold_min: 120
   bin_threshold_max: 255
 
 rgbd:
-  bin_threshold_min: 50
+  bin_threshold_min: 100
   bin_threshold_max: 255
 
 basler:
-  bin_threshold_min: 144
+  bin_threshold_min: 50
   bin_threshold_max: 255
-
-

@@ -19,6 +19,7 @@
         <param name="camera_basler_reading" type="str" value="/$(arg UAV_NAME)/basler_down/image_raw" />
         <param name="camera_rgbd_reading" type="str" value="/$(arg UAV_NAME)/rgbd/color/image_raw" />
         <param name="camera_oakd_reading" type="str" value="/$(arg UAV_NAME)/oak/rgb/image_raw" />
+        <!-- <param name="camera_oakd_reading" type="str" value="/$(arg UAV_NAME)/oakd/color/image_raw" /> -->
 
       </node>
 

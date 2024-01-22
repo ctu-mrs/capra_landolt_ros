@@ -15,6 +15,7 @@
   <depend>image_publisher</depend>
   <depend>cv_bridge</depend>
   <depend>opencv3</depend>
+  <depend>zbar</depend>
   <depend>image_transport</depend>
   <depend>std_msgs</depend>
   <depend>sensor_msgs</depend>

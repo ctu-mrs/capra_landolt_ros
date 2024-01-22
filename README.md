@@ -31,3 +31,15 @@ The techniques used to find the landolt are in order:
 - The detector try to find circular hull. By doing that, it can invalidate ellipse and other form which can happen if in angle or if a part is outside the camera. 
 - If the landolt C is damage some hole could happen. In this case, the landolt will be invalidate. A solution could be to approximate the shape before doing the processing.
 
+## MRS extensions
+- subscribes 
+  * realsense rgbd camera image
+  * oakd rgbd camera image
+  * basler camera image
+- republish grayscale image for tunnig some parameters (use config file)
+- using zbar library to decode QR tags
+
+## TODO:
+1. add qr code detector https://learnopencv.com/opencv-qr-code-scanner-c-and-python/ ..... for this we need custom build of the libopencv-dev which is not supported right now
+2. https://wiki.ros.org/zbar_ros
+3. https://answers.ros.org/question/9299/how-to-display-a-mesh-with-texture-in-rviz/

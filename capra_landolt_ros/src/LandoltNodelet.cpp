@@ -155,10 +155,10 @@ void LandoltNodelet::onInit() {
   image_transport::SubscriberStatusCallback basler_img_connect_cb = boost::bind(&LandoltNodelet::connectBaslerCb, this);
 
   // | ----------------------- publishers ----------------------- |
-  oakd_bounding_pub_    = nh.advertise<capra_landolt_msgs::BoundingCircles>("oakd/boundings_out", 1, oakd_connect_cb, oakd_connect_cb);
-  oakd_landolt_pub_     = nh.advertise<capra_landolt_msgs::Landolts>("oakd/landolts_out", 1, oakd_connect_cb, oakd_connect_cb);
-  oakd_image_pub_       = it_oakd_->advertise("oakd/processed_image_out", 1, oakd_img_connect_cb, oakd_img_connect_cb);
-  oakd_image_debug_pub_ = it_debug_oakd_.advertise("oakd/debug/processed_image_out", 1);
+  oakd_bounding_pub_    = nh.advertise<capra_landolt_msgs::BoundingCircles>("oak/boundings_out", 1, oakd_connect_cb, oakd_connect_cb);
+  oakd_landolt_pub_     = nh.advertise<capra_landolt_msgs::Landolts>("oak/landolts_out", 1, oakd_connect_cb, oakd_connect_cb);
+  oakd_image_pub_       = it_oakd_->advertise("oak/processed_image_out", 1, oakd_img_connect_cb, oakd_img_connect_cb);
+  oakd_image_debug_pub_ = it_debug_oakd_.advertise("oak/debug/processed_image_out", 1);
 
   rgbd_bounding_pub_ = nh.advertise<capra_landolt_msgs::BoundingCircles>("rgbd/boundings_out", 1, rgbd_connect_cb, rgbd_connect_cb);
   rgbd_landolt_pub_  = nh.advertise<capra_landolt_msgs::Landolts>("rgbd/landolts_out", 1, rgbd_connect_cb, rgbd_connect_cb);
@@ -259,7 +259,7 @@ void LandoltNodelet::imageOakdCb(const sensor_msgs::ImageConstPtr& image_msg, co
 
   std_msgs::Header header;
   header.stamp    = ros::Time::now();
-  header.frame_id = "oakd_camera";
+  header.frame_id = "oak_camera";
 
   if (oakd_landolt_pub_.getNumSubscribers() > 0) {
     capra_landolt_msgs::Landolts landolts;
@@ -295,7 +295,7 @@ void LandoltNodelet::imageOakdCb(const sensor_msgs::ImageConstPtr& image_msg, co
 
     oakd_image_pub_.publish(img_msg.toImageMsg());
 
-    ROS_INFO_THROTTLE(2, "[LandoltNodelet]: publishing oakd camera processed");
+    ROS_INFO_THROTTLE(2, "[LandoltNodelet]: publishing oak camera processed");
 
     cv::Mat thresholdMat;
     cvtColor(img_ptr->image, thresholdMat, cv::COLOR_BGR2GRAY);          // convert to grayscale
